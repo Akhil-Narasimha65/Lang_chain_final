@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-import fitz  # PyMuPDF
+from pdfminer.high_level import extract_text
 import streamlit as st
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
@@ -19,12 +19,7 @@ def process_pdf(file):
     with open("temp.pdf", "wb") as f:
         f.write(file.getbuffer())
     
-    doc = fitz.open("temp.pdf")
-    text = ""
-    for page in doc:
-        text += page.get_text()
-
-    doc.close()
+    text = extract_text("temp.pdf")
 
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = text_splitter.split_text(text)
