@@ -13,7 +13,7 @@ import re
 load_dotenv()
 # Set your OpenAI API key
 openai_api_key = os.getenv("OPENAI_API_KEY")
-os.environ["OPENAI_API_KEY"] = openai_api_key
+
 # Function to process the PDF using PyMuPDF
 def process_pdf(file):
     with open("temp.pdf", "wb") as f:
