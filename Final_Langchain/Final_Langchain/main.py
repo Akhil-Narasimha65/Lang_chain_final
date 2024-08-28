@@ -24,7 +24,7 @@ def process_pdf(file):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = text_splitter.split_text(text)
 
-    embeddings = OpenAIEmbeddings()
+    embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
     db = FAISS.from_texts(chunks, embedding=embeddings)
 
     return db
