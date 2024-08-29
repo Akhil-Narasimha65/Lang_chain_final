@@ -1,4 +1,5 @@
 import os
+import time
 from dotenv import load_dotenv
 from pdfminer.high_level import extract_text
 import streamlit as st
@@ -9,10 +10,31 @@ from langchain.prompts import PromptTemplate
 from langchain.chat_models import ChatOpenAI
 from langchain.embeddings import OpenAIEmbeddings
 import re
+from openai import OpenAIError
 
+# Load environment variables
 load_dotenv()
+
 # Set your OpenAI API key
 openai_api_key = os.getenv("OPENAI_API_KEY")
+
+# Function to handle embedding with retry logic
+def embed_with_retry(embedding_func, *args, **kwargs):
+    max_retries = 5
+    retry_delay = 1  # Start with a 1-second delay
+
+    for attempt in range(max_retries):
+        try:
+            return embedding_func(*args, **kwargs)
+        except OpenAIError as e:
+            if "RateLimitError" in str(e):
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    raise e  # Reraise the error if max retries are exceeded
+            else:
+                raise e  # Reraise other OpenAI errors
 
 # Function to process the PDF using PyMuPDF
 def process_pdf(file):
@@ -20,12 +42,11 @@ def process_pdf(file):
         f.write(file.getbuffer())
     
     text = extract_text("temp.pdf")
-
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
     chunks = text_splitter.split_text(text)
 
     embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
-    db = FAISS.from_texts(chunks, embedding=embeddings)
+    db = embed_with_retry(FAISS.from_texts, chunks, embedding=embeddings)
 
     return db
 
@@ -35,7 +56,6 @@ def extract_numbers_with_context(text):
     pattern = r'([A-Za-z\s]+)\s*(\d+(?:\.\d+)?)\s*([A-Za-z\s]+)'
     matches = re.findall(pattern, text)
     return matches
-
 
 def post_process_aggregation(question, answer):
     """Post-process the answer for aggregation questions with improved filtering."""
@@ -91,37 +111,45 @@ def post_process_aggregation(question, answer):
     # If it's not an aggregation question, return the answer as-is
     return answer
 
-
-
 # Initialize Streamlit app
 st.title("PDF Q&A Bot")
 
 uploaded_file = st.file_uploader("Upload a PDF", type="pdf")
+qa = None  # Initialize qa as None
 
 if uploaded_file is not None:
     with st.spinner("Processing PDF..."):
-        db = process_pdf(uploaded_file)
-    
-    AGGREGATION_PROMPT = PromptTemplate.from_template("""
-    Given the following conversation and a followup question, rephrase the followup question to be a standalone question.
-    If the question requires any calculations or aggregations, please perform them and show your work.
-    Make sure to filter the data based on any specified conditions (e.g., region, person, division, territory).
-    Provide a step-by-step breakdown of your calculations.
+        try:
+            db = process_pdf(uploaded_file)
+            
+            AGGREGATION_PROMPT = PromptTemplate.from_template("""
+            Given the following conversation and a followup question, rephrase the followup question to be a standalone question.
+            If the question requires any calculations or aggregations, please perform them and show your work.
+            Make sure to filter the data based on any specified conditions (e.g., region, person, division, territory).
+            Provide a step-by-step breakdown of your calculations.
 
-    Chat History: {chat_history}
-    Follow up Input: {question}
+            Chat History: {chat_history}
+            Follow up Input: {question}
 
-    Standalone question with calculations (if needed):
-    """)
+            Standalone question with calculations (if needed):
+            """)
 
-    llm = ChatOpenAI(temperature=0)
-    qa = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=db.as_retriever(),
-        condense_question_prompt=AGGREGATION_PROMPT,
-        return_source_documents=True,
-        verbose=False
-    )
+            llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
+            qa = ConversationalRetrievalChain.from_llm(
+                llm=llm,
+                retriever=db.as_retriever(),
+                condense_question_prompt=AGGREGATION_PROMPT,
+                return_source_documents=True,
+                verbose=False
+            )
+            st.success("PDF processed successfully!")
+        except OpenAIError as e:
+            if "RateLimitError" in str(e):
+                st.error("Rate limit exceeded. Please wait a moment and try again.")
+            else:
+                st.error(f"An error occurred: {str(e)}")
+        except Exception as e:
+            st.error(f"An error occurred while processing the PDF: {str(e)}")
 
     chat_history = []
 
@@ -129,7 +157,7 @@ if uploaded_file is not None:
     user_question = st.text_input("Enter your question:")
 
     if st.button("Get Answer"):
-        if user_question:
+        if user_question and qa:  # Check if qa is not None
             with st.spinner("Getting answer..."):
                 try:
                     result = qa({"question": user_question, "chat_history": chat_history})
@@ -140,7 +168,16 @@ if uploaded_file is not None:
                     
                     st.write(f"**Question:** {user_question}")
                     st.write(f"**Answer:** {processed_answer}")
+                except OpenAIError as e:
+                    if "RateLimitError" in str(e):
+                        st.error("Rate limit exceeded while processing your question. Please wait a moment and try again.")
+                    else:
+                        st.error(f"An error occurred: {str(e)}")
                 except Exception as e:
                     st.error(f"An error occurred: {str(e)}")
+        elif not qa:
+            st.error("Please upload a PDF file first.")
         else:
             st.error("Please enter a question.")
+else:
+    st.info("Please upload a PDF file to get started.")
