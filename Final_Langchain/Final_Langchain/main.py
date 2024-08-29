@@ -37,7 +37,6 @@ def extract_numbers_with_context(text):
     return matches
 
 
-
 def post_process_aggregation(question, answer):
     """Post-process the answer for aggregation questions with improved filtering."""
     lower_question = question.lower()
