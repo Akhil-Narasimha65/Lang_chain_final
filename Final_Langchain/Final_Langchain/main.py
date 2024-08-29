@@ -44,46 +44,53 @@ def post_process_aggregation(question, answer):
     # Extract numbers and context
     numbers_with_context = extract_numbers_with_context(answer)
     
+    # Determine if the question is asking for an aggregation
+    aggregation_keywords = ["total", "sum", "aggregate", "overall", "count", "total sales"]
+    is_aggregation_question = any(keyword in lower_question for keyword in aggregation_keywords)
+    
     # Extract the filter condition from the question
     filter_words = ["region", "person", "division", "territory", "representative"]
     filter_condition = next((word for word in filter_words if word in lower_question), None)
     
-    if filter_condition:
-        filter_value_match = re.search(fr"{filter_condition}\s+(\w+)", lower_question, re.IGNORECASE)
-        if filter_value_match:
-            filter_value = filter_value_match.group(1).lower()
-            filtered_numbers = []
-            
-            for context in numbers_with_context:
-                *contexts, num = context  # Unpack the context and the number
-                combined_context = " ".join(contexts).lower()  # Combine all context parts
+    if is_aggregation_question:
+        if filter_condition:
+            filter_value_match = re.search(fr"{filter_condition}\s+(\w+)", lower_question, re.IGNORECASE)
+            if filter_value_match:
+                filter_value = filter_value_match.group(1).lower()
+                filtered_numbers = []
                 
-                # Check if the number is actually a valid float and not part of a sentence
+                for context in numbers_with_context:
+                    *contexts, num = context  # Unpack the context and the number
+                    combined_context = " ".join(contexts).lower()  # Combine all context parts
+                    
+                    # Check if the number is actually a valid float and not part of a sentence
+                    try:
+                        num_value = float(num)
+                    except ValueError:
+                        continue
+                    
+                    if filter_value in combined_context:
+                        filtered_numbers.append(num_value)
+                
+                if filtered_numbers:
+                    total = sum(filtered_numbers)
+                    return f"The total sales for {filter_condition} '{filter_value.capitalize()}' is {total}. Details: {answer}"
+                else:
+                    return f"No specific data found for {filter_condition} '{filter_value.capitalize()}'. Raw answer: {answer}"
+        
+        # If no filter condition or filtered results are found
+        if numbers_with_context:
+            total = 0
+            for *contexts, num in numbers_with_context:
                 try:
-                    num_value = float(num)
+                    total += float(num)
                 except ValueError:
                     continue
-                
-                if filter_value in combined_context:
-                    filtered_numbers.append(num_value)
-            
-            if filtered_numbers:
-                total = sum(filtered_numbers)
-                return f"The total sales for {filter_condition} '{filter_value.capitalize()}' is {total}. Details: {answer}"
-            else:
-                return f"No specific data found for {filter_condition} '{filter_value.capitalize()}'. Raw answer: {answer}"
+            return f"The total of all sales mentioned is {total}. This may not be specific to your query. Details: {answer}"
     
-    # If no filter condition or filtered results are found
-    if numbers_with_context:
-        total = 0
-        for *contexts, num in numbers_with_context:
-            try:
-                total += float(num)
-            except ValueError:
-                continue
-        return f"The total of all sales mentioned is {total}. This may not be specific to your query. Details: {answer}"
-    
+    # If it's not an aggregation question, return the answer as-is
     return answer
+
 
 
 # Initialize Streamlit app
