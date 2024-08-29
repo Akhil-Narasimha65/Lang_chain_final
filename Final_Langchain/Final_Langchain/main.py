@@ -36,6 +36,8 @@ def extract_numbers_with_context(text):
     matches = re.findall(pattern, text)
     return matches
 
+
+
 def post_process_aggregation(question, answer):
     """Post-process the answer for aggregation questions with improved filtering."""
     lower_question = question.lower()
@@ -54,11 +56,17 @@ def post_process_aggregation(question, answer):
             filtered_numbers = []
             
             for context in numbers_with_context:
-                *contexts, num = context  # This unpacks all but the last item into `contexts`, and the last item into `num`
-                combined_context = " ".join(contexts).lower()  # Combine all context parts into a single string
+                *contexts, num = context  # Unpack the context and the number
+                combined_context = " ".join(contexts).lower()  # Combine all context parts
+                
+                # Check if the number is actually a valid float and not part of a sentence
+                try:
+                    num_value = float(num)
+                except ValueError:
+                    continue
                 
                 if filter_value in combined_context:
-                    filtered_numbers.append(float(num))
+                    filtered_numbers.append(num_value)
             
             if filtered_numbers:
                 total = sum(filtered_numbers)
@@ -68,10 +76,16 @@ def post_process_aggregation(question, answer):
     
     # If no filter condition or filtered results are found
     if numbers_with_context:
-        total = sum(float(num) for *contexts, num in numbers_with_context)  # Dynamically unpack and sum all numbers
+        total = 0
+        for *contexts, num in numbers_with_context:
+            try:
+                total += float(num)
+            except ValueError:
+                continue
         return f"The total of all sales mentioned is {total}. This may not be specific to your query. Details: {answer}"
     
     return answer
+
 
 # Initialize Streamlit app
 st.title("PDF Q&A Bot")
