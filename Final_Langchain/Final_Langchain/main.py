@@ -30,8 +30,9 @@ def process_pdf(file):
     return db
 
 def extract_numbers_with_context(text):
-    """Extract numbers along with their preceding words for context."""
-    pattern = r'([A-Za-z\s]+):\s*(\d+(?:\.\d+)?)'
+    """Extract numbers along with their preceding and following words for context."""
+    # Updated pattern to capture context before and after the number
+    pattern = r'([A-Za-z\s]+)\s*(\d+(?:\.\d+)?)\s*([A-Za-z\s]+)'
     matches = re.findall(pattern, text)
     return matches
 
