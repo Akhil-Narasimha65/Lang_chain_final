@@ -51,8 +51,14 @@ def post_process_aggregation(question, answer):
         filter_value_match = re.search(fr"{filter_condition}\s+(\w+)", lower_question, re.IGNORECASE)
         if filter_value_match:
             filter_value = filter_value_match.group(1).lower()
-            filtered_numbers = [float(num) for context, num in numbers_with_context 
-                                if filter_value in context.lower()]
+            filtered_numbers = []
+            
+            for context in numbers_with_context:
+                *contexts, num = context  # This unpacks all but the last item into `contexts`, and the last item into `num`
+                combined_context = " ".join(contexts).lower()  # Combine all context parts into a single string
+                
+                if filter_value in combined_context:
+                    filtered_numbers.append(float(num))
             
             if filtered_numbers:
                 total = sum(filtered_numbers)
@@ -62,7 +68,7 @@ def post_process_aggregation(question, answer):
     
     # If no filter condition or filtered results are found
     if numbers_with_context:
-        total = sum(float(num) for _, num in numbers_with_context)
+        total = sum(float(num) for *contexts, num in numbers_with_context)  # Dynamically unpack and sum all numbers
         return f"The total of all sales mentioned is {total}. This may not be specific to your query. Details: {answer}"
     
     return answer
